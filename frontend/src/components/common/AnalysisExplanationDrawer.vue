@@ -2,12 +2,14 @@
 import { computed } from 'vue'
 import { FileSearch, X } from 'lucide-vue-next'
 import type { DeviationAnalysis } from '../../types/deviation-analysis'
+import { phaseDispositionLabels } from '../../types/enums/phase-disposition'
 import DeviationBadge from './DeviationBadge.vue'
 import PhaseBadge from './PhaseBadge.vue'
 
 const props = defineProps<{ modelValue: boolean; analysis: DeviationAnalysis | null }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const scores = computed(() => props.analysis?.phase_scores_json ?? [])
+const reviews = computed(() => props.analysis?.phase_reviews ?? [])
 </script>
 <template>
   <el-drawer :model-value="modelValue" size="min(680px, 94vw)" :with-header="false" @close="emit('update:modelValue', false)">
@@ -30,6 +32,16 @@ const scores = computed(() => props.analysis?.phase_scores_json ?? [])
         <h3>疑似原因规则命中</h3>
         <p v-if="!analysis.suspected_causes_json.length" class="muted">未命中高置信度规则。</p>
         <ul v-else><li v-for="cause in analysis.suspected_causes_json" :key="cause">{{ cause }}</li></ul>
+      </section>
+      <section class="drawer-section">
+        <h3>阶段复核结论</h3>
+        <p v-if="!reviews.length" class="muted">尚无阶段结论记录。</p>
+        <div v-for="review in reviews" :key="review.phase" class="phase-evidence">
+          <PhaseBadge :phase="review.phase" />
+          <strong>{{ phaseDispositionLabels[review.disposition] }}</strong>
+          <span>{{ review.note }}</span>
+          <span>{{ review.submitted_by_name }} · {{ new Date(review.submitted_at).toLocaleString() }}</span>
+        </div>
       </section>
       <dl class="evidence-grid">
         <div><dt>输入哈希</dt><dd>{{ analysis.input_hash }}</dd></div>

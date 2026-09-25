@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CheckCircle2, FileSearch, Play, RefreshCw, RotateCcw, SearchCheck } from 'lucide-vue-next'
 import AnalysisExplanationDrawer from '../components/common/AnalysisExplanationDrawer.vue'
@@ -13,7 +13,8 @@ import { useAnalysisRun } from '../hooks/useAnalysisRun'
 import { useAuth } from '../hooks/useAuth'
 import { useAnalysisStore } from '../stores/deviation-analysis'
 import { useSeriesStore } from '../stores/sensor-series'
-import type { AnalysisState } from '../types/deviation-analysis'
+import type { AnalysisState, PhaseReview } from '../types/deviation-analysis'
+import { phaseDispositionLabels, phaseDispositions, type PhaseDisposition } from '../types/enums/phase-disposition'
 
 const analyses = useAnalysisStore()
 const series = useSeriesStore()
@@ -21,15 +22,44 @@ const { auth, canRunAnalysis, canReview, canConfirm } = useAuth()
 const runner = useAnalysisRun()
 const drawer = ref(false)
 const reviewComment = ref('')
+const savingPhase = ref('')
+const drafts = reactive<Record<string, { disposition: PhaseDisposition | ''; note: string }>>({})
+const phaseLabels: Record<string, string> = { lag: '延滞期', growth: '生长期', production: '产物期', harvest: '收获期' }
 const canSelfConfirm = computed(() => analyses.selected?.initiated_by !== auth.user?.id)
+const reviewOpen = computed(() => ['completed', 'reviewed', 'investigating'].includes(analyses.selected?.analysis_state ?? ''))
+const pendingPhases = computed(() => analyses.selected?.pending_review_phases ?? [])
+const reviewFor = (phase: string): PhaseReview | undefined =>
+  analyses.selected?.phase_reviews.find((item) => item.phase === phase)
+const isAbnormal = (phase: string) => pendingPhases.value.includes(phase) || Boolean(reviewFor(phase))
+function draftFor(phase: string) {
+  if (!drafts[phase]) drafts[phase] = { disposition: reviewFor(phase)?.disposition ?? '', note: reviewFor(phase)?.note ?? '' }
+  return drafts[phase]
+}
+watch(() => analyses.selected?.id, () => {
+  Object.keys(drafts).forEach((key) => delete drafts[key])
+  analyses.selected?.phase_reviews.forEach((review) => { drafts[review.phase] = { disposition: review.disposition, note: review.note } })
+}, { immediate: true })
 
 async function run() {
   try { await runner.run(); ElMessage.success('分析已完成或返回现有幂等结果') }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : '分析运行失败') }
 }
 async function transition(state: AnalysisState) {
+  if (state === 'confirmed' && pendingPhases.value.length) {
+    ElMessage.warning(`异常阶段 ${pendingPhases.value.map((phase) => phaseLabels[phase] ?? phase).join('、')} 尚无复核结论，请逐项处理后再确认`)
+    return
+  }
   try { await analyses.transition(state, reviewComment.value); reviewComment.value = ''; ElMessage.success('分析状态已更新') }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : '状态更新失败') }
+}
+async function submitReview(phase: string) {
+  const draft = draftFor(phase)
+  if (!draft.disposition) { ElMessage.warning('请选择结论类型'); return }
+  if (!draft.note.trim()) { ElMessage.warning('请填写一句说明'); return }
+  savingPhase.value = phase
+  try { await analyses.reviewPhase(phase, draft.disposition, draft.note.trim()); ElMessage.success('阶段结论已记录') }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '阶段结论提交失败') }
+  finally { savingPhase.value = '' }
 }
 async function replay() {
   try { await analyses.replay(); ElMessage.success('冻结输入重放一致') }
@@ -83,10 +113,29 @@ onMounted(async () => { await Promise.all([series.load(), analyses.load()]); run
                   <div><dt>斜率</dt><dd>{{ score.slope_deviation.toFixed(3) }}</dd></div>
                   <div><dt>峰值</dt><dd>{{ score.peak_time_deviation.toFixed(3) }}</dd></div>
                 </dl>
+                <footer v-if="isAbnormal(score.phase)" class="phase-review">
+                  <template v-if="reviewFor(score.phase)">
+                    <el-tag size="small" :type="reviewFor(score.phase)!.disposition === 'request_follow_up' ? 'warning' : 'success'">
+                      {{ phaseDispositionLabels[reviewFor(score.phase)!.disposition] }}
+                    </el-tag>
+                    <p class="phase-note">{{ reviewFor(score.phase)!.note }}</p>
+                    <small>{{ reviewFor(score.phase)!.submitted_by_name }} · {{ new Date(reviewFor(score.phase)!.submitted_at).toLocaleString() }}</small>
+                  </template>
+                  <el-tag v-else size="small" type="danger">待结论</el-tag>
+                  <div v-if="canReview && reviewOpen" class="phase-review-form">
+                    <el-radio-group v-model="draftFor(score.phase).disposition" size="small">
+                      <el-radio-button v-for="option in phaseDispositions" :key="option" :value="option">{{ phaseDispositionLabels[option] }}</el-radio-button>
+                    </el-radio-group>
+                    <el-input v-model="draftFor(score.phase).note" size="small" maxlength="500" placeholder="一句说明（必填）" />
+                    <el-button size="small" type="primary" :loading="savingPhase === score.phase" @click="submitReview(score.phase)">记录结论</el-button>
+                  </div>
+                </footer>
               </article>
             </div>
             <section v-if="canReview" class="review-band">
               <div><SearchCheck :size="19" /><span><strong>人工审阅</strong><small>确认动作要求与发起人分离</small></span></div>
+              <el-alert v-if="pendingPhases.length && analyses.selected.analysis_state === 'reviewed'" type="warning" :closable="false" show-icon
+                :title="`还有 ${pendingPhases.length} 个异常阶段未给出结论，确认前需逐项处理`" />
               <el-input v-model="reviewComment" placeholder="审阅结论（可选）" />
               <div class="review-actions">
                 <el-button v-if="analyses.selected.analysis_state === 'completed'" @click="transition('reviewed')">标记已复核</el-button>

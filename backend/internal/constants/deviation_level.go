@@ -26,6 +26,11 @@ func DeviationLevelForScore(score float64) DeviationLevel {
 		return DeviationNormal
 	}
 }
+// PhaseNeedsReview reports whether a phase weighted deviation is abnormal
+// enough to require an explicit reviewer disposition before confirmation.
+func PhaseNeedsReview(weightedDeviation float64) bool {
+	return DeviationLevelForScore(weightedDeviation) != DeviationNormal
+}
 func DeviationLevelValues() []string {
 	return []string{string(DeviationNormal), string(DeviationWatch), string(DeviationMajor), string(DeviationCritical)}
 }

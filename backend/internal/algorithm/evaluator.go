@@ -98,6 +98,23 @@ func DecodeSnapshot(raw string) (Snapshot, error) {
 	}
 	return snapshot, nil
 }
+
+// AbnormalPhases decodes stored phase evidence and returns the phases whose
+// weighted deviation requires an explicit reviewer disposition before the
+// analysis result may be confirmed.
+func AbnormalPhases(phaseScoresJSON string) ([]string, error) {
+	var evidence []PhaseEvidence
+	if err := json.Unmarshal([]byte(phaseScoresJSON), &evidence); err != nil {
+		return nil, fmt.Errorf("decode phase scores: %w", err)
+	}
+	phases := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		if constants.PhaseNeedsReview(item.WeightedDeviation) {
+			phases = append(phases, item.Phase)
+		}
+	}
+	return phases, nil
+}
 func ValidateRecipeConfiguration(boundariesRaw, curvesRaw, toleranceRaw []byte, targetDuration float64) error {
 	boundaries, curves, tolerances, err := parseConfiguration(boundariesRaw, curvesRaw, toleranceRaw)
 	if err != nil {

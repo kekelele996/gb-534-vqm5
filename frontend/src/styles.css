@@ -330,3 +330,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; }
   .signal-board { gap: 6px; }
   .login-panel { padding: 28px 20px; }
 }
+.phase-review { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); display: grid; gap: 6px; justify-items: start; }
+.phase-review .phase-note { margin: 0; font-size: .64rem; line-height: 1.5; }
+.phase-review small { color: var(--muted); font-size: .56rem; }
+.phase-review-form { display: grid; gap: 6px; width: 100%; }
+.phase-review-form .el-radio-group { flex-wrap: wrap; }

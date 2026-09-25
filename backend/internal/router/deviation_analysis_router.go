@@ -13,5 +13,6 @@ func RegisterDeviationAnalysisRoutes(
 	group.GET("/:id", middleware.RequirePermission(constants.PermissionRead), h.Get)
 	group.POST("", middleware.RequirePermission(constants.PermissionAnalysisRun), runLimiter.Middleware("analysis-run"), h.Run)
 	group.POST("/:id/transition", middleware.RequirePermission(constants.PermissionAnalysisReview), h.Transition)
+	group.POST("/:id/phase-reviews", middleware.RequirePermission(constants.PermissionAnalysisReview), h.SubmitPhaseReview)
 	group.POST("/:id/replay", middleware.RequirePermission(constants.PermissionAnalysisRun), runLimiter.Middleware("analysis-replay"), h.Replay)
 }

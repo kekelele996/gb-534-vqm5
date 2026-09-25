@@ -1,6 +1,7 @@
 package dto
 import (
 	"encoding/json"
+	"fermentation-kinetics-deviation-analysis/backend/internal/algorithm"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"time"
 )
@@ -38,6 +39,8 @@ type DeviationAnalysisResponse struct {
 	FailureReason        string                `json:"failure_reason,omitempty"`
 	ReviewComment        string                `json:"review_comment,omitempty"`
 	ReplayVerified       *bool                 `json:"replay_verified,omitempty"`
+	PhaseReviews         []PhaseReviewResponse `json:"phase_reviews"`
+	PendingReviewPhases  []string              `json:"pending_review_phases"`
 	SensorSeries         *SensorSeriesResponse `json:"sensor_series,omitempty"`
 	CreatedAt            time.Time             `json:"created_at"`
 	UpdatedAt            time.Time             `json:"updated_at"`
@@ -48,7 +51,9 @@ type DeviationAnalysisListResponse struct {
 	Page  int                         `json:"page"`
 	Size  int                         `json:"page_size"`
 }
-func NewDeviationAnalysisResponse(analysis model.DeviationAnalysis) DeviationAnalysisResponse {
+func NewDeviationAnalysisResponse(
+	analysis model.DeviationAnalysis, reviews []model.AnalysisPhaseReview,
+) DeviationAnalysisResponse {
 	response := DeviationAnalysisResponse{
 		ID: analysis.ID, SensorSeriesID: analysis.SensorSeriesID, RecipeID: analysis.RecipeID,
 		RecipeVersion: analysis.RecipeVersion, AlgorithmVersion: analysis.AlgorithmVersion,
@@ -60,7 +65,23 @@ func NewDeviationAnalysisResponse(analysis model.DeviationAnalysis) DeviationAna
 		ReviewedBy: analysis.ReviewedBy, ReviewedByName: analysis.ReviewedByName,
 		DurationMilliseconds: analysis.DurationMilliseconds, FailureReason: analysis.FailureReason,
 		ReviewComment: analysis.ReviewComment, ReplayVerified: analysis.ReplayVerified,
+		PhaseReviews: make([]PhaseReviewResponse, 0, len(reviews)), PendingReviewPhases: []string{},
 		CreatedAt: analysis.CreatedAt, UpdatedAt: analysis.UpdatedAt,
+	}
+	disposed := make(map[string]bool, len(reviews))
+	for _, review := range reviews {
+		if review.AnalysisID != analysis.ID {
+			continue
+		}
+		response.PhaseReviews = append(response.PhaseReviews, NewPhaseReviewResponse(review))
+		disposed[review.Phase] = true
+	}
+	if abnormal, err := algorithm.AbnormalPhases(analysis.PhaseScoresJSON); err == nil {
+		for _, phase := range abnormal {
+			if !disposed[phase] {
+				response.PendingReviewPhases = append(response.PendingReviewPhases, phase)
+			}
+		}
 	}
 	if analysis.SensorSeries.ID != 0 {
 		s := NewSensorSeriesResponse(analysis.SensorSeries)

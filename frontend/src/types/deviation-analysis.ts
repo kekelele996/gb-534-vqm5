@@ -1,7 +1,16 @@
 import type { DeviationLevel } from './enums/deviation-level'
+import type { PhaseDisposition } from './enums/phase-disposition'
 import type { SensorSeries } from './sensor-series'
 
 export type AnalysisState = 'queued' | 'analyzing' | 'completed' | 'failed' | 'reviewed' | 'confirmed' | 'investigating' | 'voided'
+export interface PhaseReview {
+  phase: string
+  disposition: PhaseDisposition
+  note: string
+  submitted_by: number
+  submitted_by_name: string
+  submitted_at: string
+}
 export interface PhaseScore {
   phase: string
   duration_deviation: number
@@ -42,6 +51,8 @@ export interface DeviationAnalysis {
   failure_reason?: string
   review_comment?: string
   replay_verified?: boolean
+  phase_reviews: PhaseReview[]
+  pending_review_phases: string[]
   sensor_series?: SensorSeries
   created_at: string
   updated_at: string

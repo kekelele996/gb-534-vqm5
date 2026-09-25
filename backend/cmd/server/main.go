@@ -45,13 +45,14 @@ func run(logger *slog.Logger) error {
 	recipeRepo := repository.NewCultureRecipeRepository(db)
 	seriesRepo := repository.NewSensorSeriesRepository(db)
 	analysisRepo := repository.NewDeviationAnalysisRepository(db)
+	phaseReviewRepo := repository.NewAnalysisPhaseReviewRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	vesselHandler := handler.NewFermentationVesselHandler(service.NewFermentationVesselService(vesselRepo, auditRepo))
 	recipeHandler := handler.NewCultureRecipeHandler(service.NewCultureRecipeService(recipeRepo, vesselRepo, auditRepo))
 	seriesHandler := handler.NewSensorSeriesHandler(service.NewSensorSeriesService(seriesRepo, recipeRepo, vesselRepo, auditRepo))
 	analysisHandler := handler.NewDeviationAnalysisHandler(service.NewDeviationAnalysisService(
-		analysisRepo, recipeRepo, seriesRepo, auditRepo, algorithm.NewEvaluator(),
+		analysisRepo, phaseReviewRepo, recipeRepo, seriesRepo, auditRepo, algorithm.NewEvaluator(),
 	))
 	auth := middleware.NewAuthenticator(userRepo, cfg)
 	loginLimiter := middleware.NewRateLimiter(cfg.LoginLimitPerMinute)
@@ -86,6 +87,7 @@ func run(logger *slog.Logger) error {
 			"series_states":       constants.SeriesStateValues(),
 			"recipe_states":       constants.RecipeStateValues(),
 			"analysis_states":     constants.AnalysisStateValues(),
+			"phase_dispositions":  constants.PhaseDispositionValues(),
 			"roles":               constants.RoleValues(),
 		})
 	})

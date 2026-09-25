@@ -14,23 +14,33 @@ import (
 	"gorm.io/gorm"
 )
 type DeviationAnalysisService struct {
-	analyses  repository.DeviationAnalysisRepository
-	recipes   repository.CultureRecipeRepository
-	series    repository.SensorSeriesRepository
-	audits    repository.AuditRepository
-	evaluator *algorithm.Evaluator
-	now       func() time.Time
+	analyses     repository.DeviationAnalysisRepository
+	phaseReviews repository.AnalysisPhaseReviewRepository
+	recipes      repository.CultureRecipeRepository
+	series       repository.SensorSeriesRepository
+	audits       repository.AuditRepository
+	evaluator    *algorithm.Evaluator
+	now          func() time.Time
 }
+
+// phaseReviewOpenStates are the analysis states in which a reviewer may still
+// record or revise per-phase dispositions; confirmed and voided results are closed.
+var phaseReviewOpenStates = []string{
+	string(constants.AnalysisCompleted), string(constants.AnalysisReviewed), string(constants.AnalysisInvestigating),
+}
+
 func NewDeviationAnalysisService(
 	analyses repository.DeviationAnalysisRepository,
+	phaseReviews repository.AnalysisPhaseReviewRepository,
 	recipes repository.CultureRecipeRepository,
 	series repository.SensorSeriesRepository,
 	audits repository.AuditRepository,
 	evaluator *algorithm.Evaluator,
 ) *DeviationAnalysisService {
 	return &DeviationAnalysisService{
-		analyses: analyses, recipes: recipes, series: series, audits: audits, evaluator: evaluator,
-		now: func() time.Time { return time.Now().UTC() },
+		analyses: analyses, phaseReviews: phaseReviews, recipes: recipes, series: series, audits: audits,
+		evaluator: evaluator,
+		now:       func() time.Time { return time.Now().UTC() },
 	}
 }
 func (s *DeviationAnalysisService) Run(
@@ -66,12 +76,14 @@ func (s *DeviationAnalysisService) Run(
 		if prior.InputHash != inputHash {
 			return dto.DeviationAnalysisResponse{}, false, util.NewError(http.StatusConflict, util.CodeConflict, "Idempotency-Key is already bound to a different input")
 		}
-		return dto.NewDeviationAnalysisResponse(prior), true, nil
+		response, responseErr := s.withReviews(ctx, prior)
+		return response, true, responseErr
 	} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
 		return dto.DeviationAnalysisResponse{}, false, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to check idempotency key", findErr)
 	}
 	if prior, findErr := s.analyses.FindByInput(ctx, inputHash, algorithm.Version); findErr == nil {
-		return dto.NewDeviationAnalysisResponse(prior), true, nil
+		response, responseErr := s.withReviews(ctx, prior)
+		return response, true, responseErr
 	} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
 		return dto.DeviationAnalysisResponse{}, false, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to check frozen input", findErr)
 	}
@@ -90,7 +102,8 @@ func (s *DeviationAnalysisService) Run(
 	}
 	if err := s.analyses.Create(ctx, &analysis); err != nil {
 		if prior, findErr := s.analyses.FindByInput(ctx, inputHash, algorithm.Version); findErr == nil {
-			return dto.NewDeviationAnalysisResponse(prior), true, nil
+			response, responseErr := s.withReviews(ctx, prior)
+			return response, true, responseErr
 		}
 		return dto.DeviationAnalysisResponse{}, false, util.WrapError(http.StatusConflict, util.CodeConflict, "analysis was queued concurrently", err)
 	}
@@ -128,7 +141,17 @@ func (s *DeviationAnalysisService) Run(
 		inputHash, algorithm.Version, duration); err != nil {
 		return dto.DeviationAnalysisResponse{}, false, err
 	}
-	return dto.NewDeviationAnalysisResponse(analysis), false, nil
+	response, err := s.withReviews(ctx, analysis)
+	return response, false, err
+}
+func (s *DeviationAnalysisService) withReviews(
+	ctx context.Context, analysis model.DeviationAnalysis,
+) (dto.DeviationAnalysisResponse, error) {
+	reviews, err := s.phaseReviews.ListByAnalysisIDs(ctx, []uint{analysis.ID})
+	if err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load phase reviews", err)
+	}
+	return dto.NewDeviationAnalysisResponse(analysis, reviews), nil
 }
 func (s *DeviationAnalysisService) Get(ctx context.Context, id uint) (dto.DeviationAnalysisResponse, error) {
 	analysis, err := s.analyses.GetByID(ctx, id, true)
@@ -138,7 +161,7 @@ func (s *DeviationAnalysisService) Get(ctx context.Context, id uint) (dto.Deviat
 		}
 		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load deviation analysis", err)
 	}
-	return dto.NewDeviationAnalysisResponse(analysis), nil
+	return s.withReviews(ctx, analysis)
 }
 func (s *DeviationAnalysisService) List(
 	ctx context.Context, query dto.DeviationAnalysisQuery,
@@ -150,8 +173,16 @@ func (s *DeviationAnalysisService) List(
 	response := dto.DeviationAnalysisListResponse{
 		Items: make([]dto.DeviationAnalysisResponse, 0, len(analyses)), Total: total, Page: query.Page, Size: query.PageSize,
 	}
+	ids := make([]uint, 0, len(analyses))
 	for _, analysis := range analyses {
-		response.Items = append(response.Items, dto.NewDeviationAnalysisResponse(analysis))
+		ids = append(ids, analysis.ID)
+	}
+	reviews, err := s.phaseReviews.ListByAnalysisIDs(ctx, ids)
+	if err != nil {
+		return dto.DeviationAnalysisListResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load phase reviews", err)
+	}
+	for _, analysis := range analyses {
+		response.Items = append(response.Items, dto.NewDeviationAnalysisResponse(analysis, reviews))
 	}
 	return response, nil
 }
@@ -174,6 +205,11 @@ func (s *DeviationAnalysisService) Transition(
 		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeReviewerConflict,
 			"analysis initiator cannot confirm their own result")
 	}
+	if to == constants.AnalysisConfirmed {
+		if err := s.requirePhaseDispositions(ctx, analysis); err != nil {
+			return dto.DeviationAnalysisResponse{}, err
+		}
+	}
 	before := analysis
 	updates := map[string]any{"review_comment": strings.TrimSpace(request.Comment)}
 	if to == constants.AnalysisReviewed {
@@ -194,6 +230,104 @@ func (s *DeviationAnalysisService) Transition(
 		analysis.ReviewedByName = actor.Username
 	}
 	if err := recordAudit(ctx, s.audits, actor, "deviation_analysis", id, "transition", before, analysis,
+		analysis.InputHash, analysis.AlgorithmVersion, 0); err != nil {
+		return dto.DeviationAnalysisResponse{}, err
+	}
+	return s.Get(ctx, id)
+}
+
+// requirePhaseDispositions blocks confirmation while any abnormal phase still
+// lacks a reviewer disposition, naming the outstanding phases in the error.
+func (s *DeviationAnalysisService) requirePhaseDispositions(ctx context.Context, analysis model.DeviationAnalysis) error {
+	abnormal, err := algorithm.AbnormalPhases(analysis.PhaseScoresJSON)
+	if err != nil {
+		return util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to decode phase evidence", err)
+	}
+	if len(abnormal) == 0 {
+		return nil
+	}
+	reviews, err := s.phaseReviews.ListByAnalysisIDs(ctx, []uint{analysis.ID})
+	if err != nil {
+		return util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load phase reviews", err)
+	}
+	disposed := make(map[string]bool, len(reviews))
+	for _, review := range reviews {
+		disposed[review.Phase] = true
+	}
+	missing := make([]string, 0, len(abnormal))
+	for _, phase := range abnormal {
+		if !disposed[phase] {
+			missing = append(missing, phase)
+		}
+	}
+	if len(missing) > 0 {
+		return util.NewError(http.StatusConflict, util.CodeStateTransition,
+			"phase review dispositions are still missing for: "+strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// SubmitPhaseReview records or revises the reviewer disposition for one
+// abnormal phase. Dispositions freeze once the analysis leaves the open states.
+func (s *DeviationAnalysisService) SubmitPhaseReview(
+	ctx context.Context, id uint, request dto.SubmitPhaseReviewRequest, actor util.Actor,
+) (dto.DeviationAnalysisResponse, error) {
+	analysis, err := s.analyses.GetByID(ctx, id, false)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return dto.DeviationAnalysisResponse{}, util.NotFound("deviation analysis")
+		}
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load deviation analysis", err)
+	}
+	if !constants.FermentationPhase(request.Phase).Valid() {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusBadRequest, util.CodeValidation, "unknown fermentation phase "+request.Phase)
+	}
+	if !constants.PhaseDisposition(request.Disposition).Valid() {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusBadRequest, util.CodeValidation, "unknown phase disposition "+request.Disposition)
+	}
+	note := strings.TrimSpace(request.Note)
+	if note == "" {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusBadRequest, util.CodeValidation, "phase review note is required")
+	}
+	abnormal, err := algorithm.AbnormalPhases(analysis.PhaseScoresJSON)
+	if err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to decode phase evidence", err)
+	}
+	phaseNeedsReview := false
+	for _, phase := range abnormal {
+		if phase == request.Phase {
+			phaseNeedsReview = true
+			break
+		}
+	}
+	if !phaseNeedsReview {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeStateTransition,
+			"phase "+request.Phase+" is not abnormal in this analysis and takes no disposition")
+	}
+	priorReviews, err := s.phaseReviews.ListByAnalysisIDs(ctx, []uint{id})
+	if err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load phase reviews", err)
+	}
+	now := s.now()
+	review := model.AnalysisPhaseReview{
+		AnalysisID: id, Phase: request.Phase, Disposition: request.Disposition, Note: note,
+		SubmittedBy: actor.UserID, SubmittedByName: actor.Username, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.phaseReviews.UpsertWhileOpen(ctx, review, phaseReviewOpenStates); err != nil {
+		if errors.Is(err, repository.ErrPhaseReviewClosed) {
+			return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeStateTransition,
+				"analysis is "+analysis.AnalysisState+" and its phase review dispositions are locked")
+		}
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to store phase review", err)
+	}
+	var before any
+	for _, prior := range priorReviews {
+		if prior.Phase == request.Phase {
+			before = prior
+			break
+		}
+	}
+	if err := recordAudit(ctx, s.audits, actor, "deviation_analysis", id, "phase_review", before, review,
 		analysis.InputHash, analysis.AlgorithmVersion, 0); err != nil {
 		return dto.DeviationAnalysisResponse{}, err
 	}

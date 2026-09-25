@@ -78,3 +78,16 @@ func (h *DeviationAnalysisHandler) Replay(c *gin.Context) {
 	result, serviceErr := h.service.Replay(c.Request.Context(), id, mustActor(c))
 	respond(c, http.StatusOK, result, serviceErr)
 }
+func (h *DeviationAnalysisHandler) SubmitPhaseReview(c *gin.Context) {
+	id, err := util.ParseUintParam(c, "id")
+	if err != nil {
+		util.Fail(c, err)
+		return
+	}
+	var request dto.SubmitPhaseReviewRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+	result, serviceErr := h.service.SubmitPhaseReview(c.Request.Context(), id, request, mustActor(c))
+	respond(c, http.StatusOK, result, serviceErr)
+}
