@@ -1,10 +1,12 @@
 package dto
+
 import (
 	"encoding/json"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"strings"
 	"time"
 )
+
 type CreateCultureRecipeRequest struct {
 	VesselID             uint            `json:"vessel_id" binding:"required"`
 	RecipeCode           string          `json:"recipe_code" binding:"required,min=2,max=60"`
@@ -14,10 +16,12 @@ type CreateCultureRecipeRequest struct {
 	ReferenceCurvesJSON  json.RawMessage `json:"reference_curves_json" binding:"required"`
 	ToleranceProfileJSON json.RawMessage `json:"tolerance_profile_json" binding:"required"`
 }
+
 func (r *CreateCultureRecipeRequest) Normalize() {
 	r.RecipeCode = strings.ToUpper(strings.TrimSpace(r.RecipeCode))
 	r.Organism = strings.TrimSpace(r.Organism)
 }
+
 type UpdateCultureRecipeRequest struct {
 	Version              int              `json:"version" binding:"required,gte=1"`
 	Organism             *string          `json:"organism" binding:"omitempty,min=2,max=160"`
@@ -26,7 +30,9 @@ type UpdateCultureRecipeRequest struct {
 	ReferenceCurvesJSON  *json.RawMessage `json:"reference_curves_json"`
 	ToleranceProfileJSON *json.RawMessage `json:"tolerance_profile_json"`
 }
+
 func (r *UpdateCultureRecipeRequest) Normalize() { r.Organism = trimPointer(r.Organism) }
+
 type CultureRecipeTransitionRequest struct {
 	ToState string `json:"to_state" binding:"required,oneof=draft validated published obsolete"`
 	Version int    `json:"version" binding:"required,gte=1"`
@@ -64,6 +70,7 @@ type CultureRecipeListResponse struct {
 	Page  int                     `json:"page"`
 	Size  int                     `json:"page_size"`
 }
+
 func NewCultureRecipeResponse(recipe model.CultureRecipe) CultureRecipeResponse {
 	response := CultureRecipeResponse{
 		ID: recipe.ID, VesselID: recipe.VesselID, RecipeCode: recipe.RecipeCode, Version: recipe.Version,

@@ -1,4 +1,5 @@
 package middleware
+
 import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"fermentation-kinetics-deviation-analysis/backend/internal/repository"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 )
+
 func Audit(audits repository.AuditRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		started := time.Now()
@@ -51,6 +53,14 @@ func AuditListHandler(audits repository.AuditRepository) gin.HandlerFunc {
 				return
 			}
 			query.ActorID = uint(value)
+		}
+		if raw := c.Query("entity_id"); raw != "" {
+			value, err := strconv.ParseUint(raw, 10, 64)
+			if err != nil || value == 0 {
+				util.Fail(c, util.NewError(http.StatusBadRequest, util.CodeBadRequest, "entity_id must be a positive integer"))
+				return
+			}
+			query.EntityID = uint(value)
 		}
 		if !parseAuditTime(c, "from", &query.From) || !parseAuditTime(c, "to", &query.To) {
 			return

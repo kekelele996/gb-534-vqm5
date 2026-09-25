@@ -1,12 +1,15 @@
 package algorithm
+
 import (
 	"fmt"
 	"math"
 )
+
 type AlignmentPair struct {
 	ActualIndex    int `json:"actual_index"`
 	ReferenceIndex int `json:"reference_index"`
 }
+
 func DTW(actual, reference []float64, window int) (float64, []AlignmentPair, error) {
 	if len(actual) == 0 || len(reference) == 0 {
 		return 0, nil, fmt.Errorf("DTW requires non-empty actual and reference vectors")

@@ -1,15 +1,18 @@
 package handler
+
 import (
-	"net/http"
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/service"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
+
 type DeviationAnalysisHandler struct {
 	service *service.DeviationAnalysisService
 }
+
 func NewDeviationAnalysisHandler(value *service.DeviationAnalysisService) *DeviationAnalysisHandler {
 	return &DeviationAnalysisHandler{service: value}
 }
@@ -67,6 +70,19 @@ func (h *DeviationAnalysisHandler) Transition(c *gin.Context) {
 		return
 	}
 	result, serviceErr := h.service.Transition(c.Request.Context(), id, request, actor)
+	respond(c, http.StatusOK, result, serviceErr)
+}
+func (h *DeviationAnalysisHandler) SubmitPhaseReview(c *gin.Context) {
+	id, err := util.ParseUintParam(c, "id")
+	if err != nil {
+		util.Fail(c, err)
+		return
+	}
+	var request dto.PhaseReviewRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+	result, serviceErr := h.service.SubmitPhaseReview(c.Request.Context(), id, request, mustActor(c))
 	respond(c, http.StatusOK, result, serviceErr)
 }
 func (h *DeviationAnalysisHandler) Replay(c *gin.Context) {

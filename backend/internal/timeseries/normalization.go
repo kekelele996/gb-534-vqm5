@@ -1,10 +1,12 @@
 package timeseries
+
 import (
 	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
 )
+
 type ChannelScale struct {
 	Median float64 `json:"median"`
 	IQR    float64 `json:"iqr"`
@@ -15,6 +17,7 @@ type NormalizationSummary struct {
 	Method   string                  `json:"method"`
 	Channels map[string]ChannelScale `json:"channels"`
 }
+
 func Normalize(points []Point) ([]Point, NormalizationSummary, error) {
 	if len(points) == 0 {
 		return nil, NormalizationSummary{}, fmt.Errorf("cannot normalize an empty time series")

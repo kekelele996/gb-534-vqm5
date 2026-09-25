@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { CheckCircle2, FileSearch, Play, RefreshCw, RotateCcw, SearchCheck } from 'lucide-vue-next'
 import AnalysisExplanationDrawer from '../components/common/AnalysisExplanationDrawer.vue'
 import AppShell from '../components/common/AppShell.vue'
@@ -8,12 +8,15 @@ import DeviationBadge from '../components/common/DeviationBadge.vue'
 import KineticsChart from '../components/common/KineticsChart.vue'
 import PageHeader from '../components/common/PageHeader.vue'
 import PhaseBadge from '../components/common/PhaseBadge.vue'
+import PhaseReviewCard from '../components/common/PhaseReviewCard.vue'
 import StateBadge from '../components/common/StateBadge.vue'
 import { useAnalysisRun } from '../hooks/useAnalysisRun'
 import { useAuth } from '../hooks/useAuth'
 import { useAnalysisStore } from '../stores/deviation-analysis'
 import { useSeriesStore } from '../stores/sensor-series'
-import type { AnalysisState } from '../types/deviation-analysis'
+import type { AnalysisState, PhaseReview, PhaseScore } from '../types/deviation-analysis'
+import type { PhaseDecision } from '../types/enums/phase-decision'
+import { deviationLevelForScore } from '../utils/deviation'
 
 const analyses = useAnalysisStore()
 const series = useSeriesStore()
@@ -21,7 +24,31 @@ const { auth, canRunAnalysis, canReview, canConfirm } = useAuth()
 const runner = useAnalysisRun()
 const drawer = ref(false)
 const reviewComment = ref('')
+const savingPhase = ref('')
 const canSelfConfirm = computed(() => analyses.selected?.initiated_by !== auth.user?.id)
+
+const openStates = ['completed', 'reviewed', 'investigating']
+const isOpenForReview = computed(() =>
+  analyses.selected ? openStates.includes(analyses.selected.analysis_state) : false,
+)
+const abnormalScores = computed<PhaseScore[]>(() =>
+  (analyses.selected?.phase_scores_json ?? []).filter(
+    (score) => deviationLevelForScore(score.weighted_deviation) !== 'normal',
+  ),
+)
+const reviewByPhase = computed(() => {
+  const map = new Map<string, PhaseReview>()
+  for (const review of analyses.selected?.phase_reviews ?? []) map.set(review.phase, review)
+  return map
+})
+const pendingPhases = computed(() =>
+  abnormalScores.value
+    .filter((score) => !reviewByPhase.value.has(score.phase))
+    .map((score) => score.phase),
+)
+const phaseReviewEditable = computed(
+  () => canReview.value && canSelfConfirm.value && isOpenForReview.value,
+)
 
 async function run() {
   try { await runner.run(); ElMessage.success('分析已完成或返回现有幂等结果') }
@@ -30,6 +57,28 @@ async function run() {
 async function transition(state: AnalysisState) {
   try { await analyses.transition(state, reviewComment.value); reviewComment.value = ''; ElMessage.success('分析状态已更新') }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : '状态更新失败') }
+}
+async function confirmResult() {
+  if (pendingPhases.value.length) {
+    ElMessageBox.alert(
+      `还有 ${pendingPhases.value.length} 个异常阶段没有复核结论：${pendingPhases.value.join('、')}。请先逐项处理后再确认整条结果。`,
+      '无法确认结果',
+      { type: 'warning', confirmButtonText: '去处理' },
+    ).catch(() => undefined)
+    return
+  }
+  await transition('confirmed')
+}
+async function submitPhaseReview(payload: { phase: string; decision: PhaseDecision; comment: string }) {
+  savingPhase.value = payload.phase
+  try {
+    await analyses.reviewPhase(payload.phase, payload.decision, payload.comment)
+    ElMessage.success('阶段结论已记录')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '阶段结论保存失败')
+  } finally {
+    savingPhase.value = ''
+  }
 }
 async function replay() {
   try { await analyses.replay(); ElMessage.success('冻结输入重放一致') }
@@ -85,13 +134,57 @@ onMounted(async () => { await Promise.all([series.load(), analyses.load()]); run
                 </dl>
               </article>
             </div>
+            <section v-if="abnormalScores.length" class="phase-review-band">
+              <div class="section-heading">
+                <div>
+                  <h2>异常阶段逐项复核</h2>
+                  <p>
+                    确认前请对每个异常阶段单独给出结论；已提交 {{ abnormalScores.length - pendingPhases.length }}/{{ abnormalScores.length }} 项。
+                    <template v-if="!isOpenForReview">结果已终结，阶段结论仅可查看。</template>
+                  </p>
+                </div>
+              </div>
+              <el-alert
+                v-if="phaseReviewEditable && pendingPhases.length"
+                type="warning"
+                show-icon
+                :closable="false"
+                :title="`还有 ${pendingPhases.length} 个异常阶段未结论：${pendingPhases.join('、')}，全部处理后才能确认整条结果。`"
+              />
+              <div class="phase-review-grid">
+                <PhaseReviewCard
+                  v-for="score in abnormalScores"
+                  :key="score.phase"
+                  :score="score"
+                  :review="reviewByPhase.get(score.phase)"
+                  :editable="phaseReviewEditable"
+                  :saving="savingPhase === score.phase"
+                  @submit="submitPhaseReview"
+                />
+              </div>
+            </section>
             <section v-if="canReview" class="review-band">
               <div><SearchCheck :size="19" /><span><strong>人工审阅</strong><small>确认动作要求与发起人分离</small></span></div>
               <el-input v-model="reviewComment" placeholder="审阅结论（可选）" />
+              <el-alert
+                v-if="analyses.selected.analysis_state === 'reviewed' && pendingPhases.length"
+                type="warning"
+                show-icon
+                :closable="false"
+                :title="`无法确认：仍有异常阶段（${pendingPhases.join('、')}）未逐项结论`"
+              />
               <div class="review-actions">
                 <el-button v-if="analyses.selected.analysis_state === 'completed'" @click="transition('reviewed')">标记已复核</el-button>
                 <el-button v-if="analyses.selected.analysis_state === 'reviewed'" @click="transition('investigating')">退回调查</el-button>
-                <el-button v-if="canConfirm && canSelfConfirm && analyses.selected.analysis_state === 'reviewed'" type="primary" @click="transition('confirmed')"><CheckCircle2 :size="16" />确认结果</el-button>
+                <el-tooltip
+                  v-if="canConfirm && canSelfConfirm && analyses.selected.analysis_state === 'reviewed'"
+                  :disabled="!pendingPhases.length"
+                  content="存在异常阶段没有复核结论"
+                >
+                  <el-button type="primary" @click="confirmResult">
+                    <CheckCircle2 :size="16" />确认结果
+                  </el-button>
+                </el-tooltip>
                 <el-button v-if="['completed','reviewed','investigating','confirmed'].includes(analyses.selected.analysis_state)" text @click="transition('voided')">作废</el-button>
               </div>
             </section>

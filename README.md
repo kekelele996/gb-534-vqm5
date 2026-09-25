@@ -103,8 +103,9 @@ docker compose up -d
 | `GET/POST` | `/api/v1/deviation-analyses` | 分析列表/幂等运行 |
 | `GET` | `/api/v1/deviation-analyses/:id` | 分析详情与冻结证据 |
 | `POST` | `/api/v1/deviation-analyses/:id/transition` | 复核、确认、调查或作废 |
+| `POST` | `/api/v1/deviation-analyses/:id/phase-reviews` | 逐项提交异常阶段复核结论（认可证据/要求补查/排除误报） |
 | `POST` | `/api/v1/deviation-analyses/:id/replay` | 冻结输入确定性重放 |
-| `GET` | `/api/v1/audit-logs` | 审计筛选 |
+| `GET` | `/api/v1/audit-logs` | 审计筛选（支持 `entity_id`、`action=phase_review`） |
 | `GET` | `/api/v1/meta/enums` | 共享枚举元数据 |
 
 分析运行必须携带非空且不超过 128 字符的 `Idempotency-Key`。同一键或同一输入哈希与算法版本不会生成重复历史结果。
@@ -129,6 +130,16 @@ queued -> analyzing -> completed -> reviewed -> confirmed
 
 算法按时间戳排序并去重，保留缺失率与长间隔证据；使用中位数和四分位距进行稳健缩放，再在 `lag/growth/production/harvest` 阶段边界内做确定性 DTW。结果包含持续时间、斜率、峰值时刻、曲线距离、多通道加权偏差、对齐点与原因规则命中。冻结输入和算法版本可重放，历史结果不会被覆盖。
 
+### 异常阶段逐项复核
+
+整体确认前，复核人必须对每个异常阶段（加权偏差达到 `watch/major/critical`）单独给出结论，三选一：
+
+- `accepted` 认可证据：确认该阶段算法证据成立；
+- `follow_up` 要求补查：需要补充离线检测或工艺数据后再判断；
+- `false_alarm` 排除误报：判定为传感器漂移等误报，不采纳该异常。
+
+每条结论必须附一句说明，并记录提交人（同样与分析发起人分离）与提交时间。仍有异常阶段没有结论时，确认操作返回 `409 PHASE_REVIEW_REQUIRED` 并列出未处理阶段，前端同时给出醒目提示并阻止确认；结论可在 `completed/reviewed/investigating` 期间逐项修改，一旦结果 `confirmed` 或 `voided` 即冻结不可再改。重新打开分析时，阶段结论随详情一并返回；每次提交与改判都写入审计日志（`action=phase_review`，含前后快照、提交人和时间），可在审计中心按动作与实体筛选。
+
 ## 共享枚举位置
 
 `FermentationPhase = lag | growth | production | harvest`：
@@ -147,6 +158,14 @@ queued -> analyzing -> completed -> reviewed -> confirmed
 - 测试：`backend/internal/algorithm/evaluator_test.go`、`backend/internal/constants/state_machine_test.go`、`backend/internal/service/deviation_analysis_service_test.go`
 - 前端类型与状态：`frontend/src/types/enums/deviation-level.ts`、`frontend/src/types/deviation-analysis.ts`、`frontend/src/stores/deviation-analysis.ts`
 - 组件与页面：`frontend/src/components/common/DeviationBadge.vue`、`frontend/src/pages/VesselsPage.vue`、`frontend/src/pages/AnalysesPage.vue`
+
+`PhaseDecision = accepted | follow_up | false_alarm`（异常阶段逐项复核结论）：
+
+- 后端定义与元数据：`backend/internal/constants/phase_decision.go`、`backend/cmd/server/main.go`
+- 模型/DTO/仓储/服务/路由：`backend/internal/model/deviation_analysis.go`、`backend/internal/dto/deviation_analysis.go`、`backend/internal/repository/phase_review_repository.go`、`backend/internal/service/deviation_analysis_service.go`、`backend/internal/handler/deviation_analysis_handler.go`、`backend/internal/router/deviation_analysis_router.go`
+- 测试：`backend/internal/service/deviation_analysis_service_test.go`
+- 前端类型与状态：`frontend/src/types/enums/phase-decision.ts`、`frontend/src/types/deviation-analysis.ts`、`frontend/src/api/deviation-analysis.ts`、`frontend/src/stores/deviation-analysis.ts`
+- 组件与页面：`frontend/src/components/common/PhaseReviewCard.vue`、`frontend/src/utils/deviation.ts`、`frontend/src/pages/AnalysesPage.vue`、`frontend/src/pages/AuditPage.vue`
 
 ## 环境变量与端口
 

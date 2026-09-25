@@ -1,11 +1,14 @@
 package constants
+
 type DeviationLevel string
+
 const (
 	DeviationNormal   DeviationLevel = "normal"
 	DeviationWatch    DeviationLevel = "watch"
 	DeviationMajor    DeviationLevel = "major"
 	DeviationCritical DeviationLevel = "critical"
 )
+
 func (d DeviationLevel) Valid() bool {
 	switch d {
 	case DeviationNormal, DeviationWatch, DeviationMajor, DeviationCritical:

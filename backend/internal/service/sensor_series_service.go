@@ -1,11 +1,9 @@
 package service
+
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"strings"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
@@ -13,7 +11,11 @@ import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/timeseries"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"gorm.io/gorm"
+	"net/http"
+	"strings"
+	"time"
 )
+
 type SensorSeriesService struct {
 	series  repository.SensorSeriesRepository
 	recipes repository.CultureRecipeRepository
@@ -21,6 +23,7 @@ type SensorSeriesService struct {
 	audits  repository.AuditRepository
 	now     func() time.Time
 }
+
 func NewSensorSeriesService(
 	series repository.SensorSeriesRepository,
 	recipes repository.CultureRecipeRepository,

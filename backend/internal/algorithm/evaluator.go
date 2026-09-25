@@ -1,17 +1,20 @@
 package algorithm
+
 import (
 	"encoding/json"
+	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
+	"fermentation-kinetics-deviation-analysis/backend/internal/model"
+	"fermentation-kinetics-deviation-analysis/backend/internal/timeseries"
+	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
 	"time"
-	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
-	"fermentation-kinetics-deviation-analysis/backend/internal/model"
-	"fermentation-kinetics-deviation-analysis/backend/internal/timeseries"
-	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 )
+
 const Version = "phase-dtw-v1.0.0"
+
 type PhaseBoundary struct {
 	Phase     constants.FermentationPhase `json:"phase"`
 	StartHour float64                     `json:"start_hour"`
@@ -69,6 +72,7 @@ type Result struct {
 	OverallScore        float64
 }
 type Evaluator struct{}
+
 func NewEvaluator() *Evaluator { return &Evaluator{} }
 func NewSnapshot(series model.SensorSeries, recipe model.CultureRecipe) Snapshot {
 	return Snapshot{

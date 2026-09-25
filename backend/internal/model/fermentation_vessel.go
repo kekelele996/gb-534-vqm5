@@ -1,5 +1,7 @@
 package model
+
 import "time"
+
 type FermentationVessel struct {
 	ID             uint            `gorm:"primaryKey" json:"id"`
 	VesselCode     string          `gorm:"size:40;not null;uniqueIndex" json:"vessel_code"`
@@ -15,8 +17,10 @@ type FermentationVessel struct {
 	CultureRecipes []CultureRecipe `gorm:"foreignKey:VesselID" json:"-"`
 	SensorSeries   []SensorSeries  `gorm:"foreignKey:VesselID" json:"-"`
 }
+
 func (FermentationVessel) TableName() string { return "fermentation_vessels" }
 func (v FermentationVessel) Active() bool    { return v.VesselState == "active" }
+
 type FermentationVesselSummary struct {
 	RecipeCount          int64   `json:"recipe_count"`
 	SeriesCount          int64   `json:"series_count"`

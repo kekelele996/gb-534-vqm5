@@ -1,5 +1,7 @@
 package model
+
 import "time"
+
 type SensorSeries struct {
 	ID                uint                `gorm:"primaryKey" json:"id"`
 	VesselID          uint                `gorm:"not null;index" json:"vessel_id"`
@@ -22,5 +24,6 @@ type SensorSeries struct {
 	UpdatedAt         time.Time           `gorm:"not null" json:"updated_at"`
 	Analyses          []DeviationAnalysis `gorm:"foreignKey:SensorSeriesID" json:"-"`
 }
+
 func (SensorSeries) TableName() string { return "sensor_series" }
 func (s SensorSeries) Ready() bool     { return s.SeriesState == "ready" }

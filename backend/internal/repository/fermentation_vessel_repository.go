@@ -1,13 +1,15 @@
 package repository
+
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
+	"fmt"
 	"gorm.io/gorm"
+	"strings"
 )
+
 type FermentationVesselRepository interface {
 	Create(context.Context, *model.FermentationVessel) error
 	GetByID(context.Context, uint) (model.FermentationVessel, error)
@@ -18,6 +20,7 @@ type FermentationVesselRepository interface {
 	Summary(context.Context, uint) (model.FermentationVesselSummary, error)
 }
 type fermentationVesselRepository struct{ db *gorm.DB }
+
 func NewFermentationVesselRepository(db *gorm.DB) FermentationVesselRepository {
 	return &fermentationVesselRepository{db: db}
 }

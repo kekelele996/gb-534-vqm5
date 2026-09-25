@@ -1,11 +1,14 @@
 package constants
+
 type FermentationPhase string
+
 const (
 	PhaseLag        FermentationPhase = "lag"
 	PhaseGrowth     FermentationPhase = "growth"
 	PhaseProduction FermentationPhase = "production"
 	PhaseHarvest    FermentationPhase = "harvest"
 )
+
 func (p FermentationPhase) Valid() bool {
 	switch p {
 	case PhaseLag, PhaseGrowth, PhaseProduction, PhaseHarvest:

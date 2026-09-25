@@ -1,13 +1,8 @@
 package main
+
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/algorithm"
 	"fermentation-kinetics-deviation-analysis/backend/internal/config"
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
@@ -19,7 +14,14 @@ import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/service"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"github.com/gin-gonic/gin"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
@@ -45,13 +47,14 @@ func run(logger *slog.Logger) error {
 	recipeRepo := repository.NewCultureRecipeRepository(db)
 	seriesRepo := repository.NewSensorSeriesRepository(db)
 	analysisRepo := repository.NewDeviationAnalysisRepository(db)
+	phaseReviewRepo := repository.NewPhaseReviewRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	vesselHandler := handler.NewFermentationVesselHandler(service.NewFermentationVesselService(vesselRepo, auditRepo))
 	recipeHandler := handler.NewCultureRecipeHandler(service.NewCultureRecipeService(recipeRepo, vesselRepo, auditRepo))
 	seriesHandler := handler.NewSensorSeriesHandler(service.NewSensorSeriesService(seriesRepo, recipeRepo, vesselRepo, auditRepo))
 	analysisHandler := handler.NewDeviationAnalysisHandler(service.NewDeviationAnalysisService(
-		analysisRepo, recipeRepo, seriesRepo, auditRepo, algorithm.NewEvaluator(),
+		analysisRepo, phaseReviewRepo, recipeRepo, seriesRepo, auditRepo, algorithm.NewEvaluator(),
 	))
 	auth := middleware.NewAuthenticator(userRepo, cfg)
 	loginLimiter := middleware.NewRateLimiter(cfg.LoginLimitPerMinute)
@@ -86,6 +89,7 @@ func run(logger *slog.Logger) error {
 			"series_states":       constants.SeriesStateValues(),
 			"recipe_states":       constants.RecipeStateValues(),
 			"analysis_states":     constants.AnalysisStateValues(),
+			"phase_decisions":     constants.PhaseDecisionValues(),
 			"roles":               constants.RoleValues(),
 		})
 	})

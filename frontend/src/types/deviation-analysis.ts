@@ -1,4 +1,5 @@
 import type { DeviationLevel } from './enums/deviation-level'
+import type { PhaseDecision } from './enums/phase-decision'
 import type { SensorSeries } from './sensor-series'
 
 export type AnalysisState = 'queued' | 'analyzing' | 'completed' | 'failed' | 'reviewed' | 'confirmed' | 'investigating' | 'voided'
@@ -11,6 +12,16 @@ export interface PhaseScore {
   weighted_deviation: number
   channel_scores: Record<string, number>
   observed_points: number
+}
+export interface PhaseReview {
+  id: number
+  analysis_id: number
+  phase: string
+  decision: PhaseDecision
+  comment: string
+  reviewed_by: number
+  reviewed_by_name: string
+  submitted_at: string
 }
 export interface AlignedPoint {
   phase: string
@@ -42,6 +53,7 @@ export interface DeviationAnalysis {
   failure_reason?: string
   review_comment?: string
   replay_verified?: boolean
+  phase_reviews: PhaseReview[]
   sensor_series?: SensorSeries
   created_at: string
   updated_at: string

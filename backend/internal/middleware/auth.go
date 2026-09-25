@@ -1,4 +1,5 @@
 package middleware
+
 import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/config"
 	"fermentation-kinetics-deviation-analysis/backend/internal/repository"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 )
+
 type Claims struct {
 	UserID      uint   `json:"user_id"`
 	Username    string `json:"username"`
@@ -23,6 +25,7 @@ type Authenticator struct {
 	users repository.UserRepository
 	cfg   config.Config
 }
+
 func NewAuthenticator(users repository.UserRepository, cfg config.Config) *Authenticator {
 	return &Authenticator{users: users, cfg: cfg}
 }
@@ -90,6 +93,7 @@ func ActorFromContext(c *gin.Context) (util.Actor, bool) {
 	actor, ok := value.(util.Actor)
 	return actor, exists && ok
 }
+
 type rateWindow struct {
 	start time.Time
 	count int
@@ -99,6 +103,7 @@ type RateLimiter struct {
 	windows map[string]rateWindow
 	limit   int
 }
+
 func NewRateLimiter(limit int) *RateLimiter {
 	return &RateLimiter{windows: make(map[string]rateWindow), limit: limit}
 }

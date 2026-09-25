@@ -1,21 +1,24 @@
 package service
+
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"fermentation-kinetics-deviation-analysis/backend/internal/repository"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"gorm.io/gorm"
+	"net/http"
+	"time"
 )
+
 type FermentationVesselService struct {
 	vessels repository.FermentationVesselRepository
 	audits  repository.AuditRepository
 	now     func() time.Time
 }
+
 func NewFermentationVesselService(
 	vessels repository.FermentationVesselRepository, audits repository.AuditRepository,
 ) *FermentationVesselService {

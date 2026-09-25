@@ -1,4 +1,5 @@
 package dto
+
 import (
 	"encoding/json"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
@@ -6,6 +7,7 @@ import (
 	"strings"
 	"time"
 )
+
 type CreateFermentationVesselRequest struct {
 	VesselCode     string    `json:"vessel_code" binding:"required,min=2,max=40"`
 	Name           string    `json:"name" binding:"required,min=2,max=160"`
@@ -15,6 +17,7 @@ type CreateFermentationVesselRequest struct {
 	OwnerTeam      string    `json:"owner_team" binding:"required,min=2,max=120"`
 	CommissionedAt time.Time `json:"commissioned_at" binding:"required"`
 }
+
 func (r *CreateFermentationVesselRequest) Normalize() {
 	r.VesselCode = strings.ToUpper(strings.TrimSpace(r.VesselCode))
 	r.Name = strings.TrimSpace(r.Name)
@@ -22,6 +25,7 @@ func (r *CreateFermentationVesselRequest) Normalize() {
 	r.OwnerTeam = strings.TrimSpace(r.OwnerTeam)
 	r.SensorChannels = normalizeStrings(r.SensorChannels)
 }
+
 type UpdateFermentationVesselRequest struct {
 	Name           *string    `json:"name" binding:"omitempty,min=2,max=160"`
 	WorkingVolumeL *float64   `json:"working_volume_l" binding:"omitempty,gt=0,lte=10000000"`
@@ -30,6 +34,7 @@ type UpdateFermentationVesselRequest struct {
 	OwnerTeam      *string    `json:"owner_team" binding:"omitempty,min=2,max=120"`
 	CommissionedAt *time.Time `json:"commissioned_at"`
 }
+
 func (r *UpdateFermentationVesselRequest) Normalize() {
 	r.Name = trimPointer(r.Name)
 	r.Location = trimPointer(r.Location)
@@ -39,6 +44,7 @@ func (r *UpdateFermentationVesselRequest) Normalize() {
 		r.SensorChannels = &channels
 	}
 }
+
 type FermentationVesselQuery struct {
 	Search, Location, OwnerTeam, State string
 	Page, PageSize                     int
@@ -63,6 +69,7 @@ type FermentationVesselListResponse struct {
 	Page  int                          `json:"page"`
 	Size  int                          `json:"page_size"`
 }
+
 func NewFermentationVesselResponse(v model.FermentationVessel, summary model.FermentationVesselSummary) FermentationVesselResponse {
 	var channels []string
 	_ = json.Unmarshal([]byte(v.SensorChannels), &channels)

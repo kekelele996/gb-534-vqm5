@@ -1,10 +1,12 @@
 package middleware
+
 import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
+
 func RequirePermission(permission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		actor, ok := ActorFromContext(c)

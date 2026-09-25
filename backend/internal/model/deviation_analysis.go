@@ -1,35 +1,58 @@
 package model
+
 import "time"
+
 type DeviationAnalysis struct {
-	ID                   uint         `gorm:"primaryKey" json:"id"`
-	SensorSeriesID       uint         `gorm:"not null;index" json:"sensor_series_id"`
-	SensorSeries         SensorSeries `gorm:"foreignKey:SensorSeriesID" json:"sensor_series,omitempty"`
-	RecipeID             uint         `gorm:"not null;index" json:"recipe_id"`
-	RecipeVersion        int          `gorm:"not null" json:"recipe_version"`
-	AlgorithmVersion     string       `gorm:"size:40;not null;uniqueIndex:idx_analysis_input_algo" json:"algorithm_version"`
-	InputHash            string       `gorm:"size:64;not null;uniqueIndex:idx_analysis_input_algo" json:"input_hash"`
-	InputSnapshot        string       `gorm:"type:text;not null" json:"input_snapshot"`
-	PhaseScoresJSON      string       `gorm:"type:text;not null" json:"phase_scores_json"`
-	DeviationLevel       string       `gorm:"size:24;not null;index" json:"deviation_level"`
-	AlignedCurveJSON     string       `gorm:"type:text;not null" json:"aligned_curve_json"`
-	SuspectedCausesJSON  string       `gorm:"type:text;not null" json:"suspected_causes_json"`
-	AnalysisState        string       `gorm:"size:24;not null;index" json:"analysis_state"`
-	Explanation          string       `gorm:"type:text;not null" json:"explanation"`
-	AnalyzedAt           time.Time    `gorm:"not null" json:"analyzed_at"`
-	InitiatedBy          uint         `gorm:"not null;index" json:"initiated_by"`
-	InitiatedByName      string       `gorm:"size:80;not null" json:"initiated_by_name"`
-	ReviewedBy           *uint        `gorm:"index" json:"reviewed_by,omitempty"`
-	ReviewedByName       string       `gorm:"size:80" json:"reviewed_by_name,omitempty"`
-	IdempotencyKey       string       `gorm:"size:128;not null;uniqueIndex" json:"idempotency_key"`
-	DurationMilliseconds int64        `gorm:"not null" json:"duration_milliseconds"`
-	FailureReason        string       `gorm:"type:text" json:"failure_reason,omitempty"`
-	ReviewComment        string       `gorm:"type:text" json:"review_comment,omitempty"`
-	ReplayVerified       *bool        `json:"replay_verified,omitempty"`
-	CreatedAt            time.Time    `gorm:"not null" json:"created_at"`
-	UpdatedAt            time.Time    `gorm:"not null" json:"updated_at"`
+	ID                   uint          `gorm:"primaryKey" json:"id"`
+	SensorSeriesID       uint          `gorm:"not null;index" json:"sensor_series_id"`
+	SensorSeries         SensorSeries  `gorm:"foreignKey:SensorSeriesID" json:"sensor_series,omitempty"`
+	RecipeID             uint          `gorm:"not null;index" json:"recipe_id"`
+	RecipeVersion        int           `gorm:"not null" json:"recipe_version"`
+	AlgorithmVersion     string        `gorm:"size:40;not null;uniqueIndex:idx_analysis_input_algo" json:"algorithm_version"`
+	InputHash            string        `gorm:"size:64;not null;uniqueIndex:idx_analysis_input_algo" json:"input_hash"`
+	InputSnapshot        string        `gorm:"type:text;not null" json:"input_snapshot"`
+	PhaseScoresJSON      string        `gorm:"type:text;not null" json:"phase_scores_json"`
+	DeviationLevel       string        `gorm:"size:24;not null;index" json:"deviation_level"`
+	AlignedCurveJSON     string        `gorm:"type:text;not null" json:"aligned_curve_json"`
+	SuspectedCausesJSON  string        `gorm:"type:text;not null" json:"suspected_causes_json"`
+	AnalysisState        string        `gorm:"size:24;not null;index" json:"analysis_state"`
+	Explanation          string        `gorm:"type:text;not null" json:"explanation"`
+	AnalyzedAt           time.Time     `gorm:"not null" json:"analyzed_at"`
+	InitiatedBy          uint          `gorm:"not null;index" json:"initiated_by"`
+	InitiatedByName      string        `gorm:"size:80;not null" json:"initiated_by_name"`
+	ReviewedBy           *uint         `gorm:"index" json:"reviewed_by,omitempty"`
+	ReviewedByName       string        `gorm:"size:80" json:"reviewed_by_name,omitempty"`
+	IdempotencyKey       string        `gorm:"size:128;not null;uniqueIndex" json:"idempotency_key"`
+	DurationMilliseconds int64         `gorm:"not null" json:"duration_milliseconds"`
+	FailureReason        string        `gorm:"type:text" json:"failure_reason,omitempty"`
+	ReviewComment        string        `gorm:"type:text" json:"review_comment,omitempty"`
+	ReplayVerified       *bool         `json:"replay_verified,omitempty"`
+	PhaseReviews         []PhaseReview `gorm:"foreignKey:AnalysisID" json:"phase_reviews,omitempty"`
+	CreatedAt            time.Time     `gorm:"not null" json:"created_at"`
+	UpdatedAt            time.Time     `gorm:"not null" json:"updated_at"`
 }
+
 func (DeviationAnalysis) TableName() string                    { return "deviation_analyses" }
 func (a DeviationAnalysis) ReviewerSeparated(userID uint) bool { return a.InitiatedBy != userID }
+
+// PhaseReview records the reviewer's per-abnormal-phase judgment before the
+// whole analysis can be confirmed. Rows become immutable once the analysis is
+// confirmed or voided.
+type PhaseReview struct {
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	AnalysisID     uint      `gorm:"not null;uniqueIndex:idx_phase_review_analysis_phase" json:"analysis_id"`
+	Phase          string    `gorm:"size:24;not null;uniqueIndex:idx_phase_review_analysis_phase" json:"phase"`
+	Decision       string    `gorm:"size:24;not null;index" json:"decision"`
+	Comment        string    `gorm:"type:text;not null" json:"comment"`
+	ReviewedBy     uint      `gorm:"not null;index" json:"reviewed_by"`
+	ReviewedByName string    `gorm:"size:80;not null" json:"reviewed_by_name"`
+	SubmittedAt    time.Time `gorm:"not null" json:"submitted_at"`
+	CreatedAt      time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (PhaseReview) TableName() string { return "phase_reviews" }
+
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	Username     string    `gorm:"size:80;not null;uniqueIndex" json:"username"`
@@ -40,7 +63,9 @@ type User struct {
 	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"not null" json:"updated_at"`
 }
+
 func (User) TableName() string { return "users" }
+
 type AuditLog struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
 	RequestID      string    `gorm:"size:80;not null;index" json:"request_id"`
@@ -58,4 +83,5 @@ type AuditLog struct {
 	ResultSummary  string    `gorm:"type:text" json:"result_summary,omitempty"`
 	CreatedAt      time.Time `gorm:"not null;index" json:"created_at"`
 }
+
 func (AuditLog) TableName() string { return "audit_logs" }

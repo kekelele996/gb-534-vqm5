@@ -1,12 +1,15 @@
 package handler
+
 import (
-	"net/http"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/service"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
+
 type SensorSeriesHandler struct{ service *service.SensorSeriesService }
+
 func NewSensorSeriesHandler(value *service.SensorSeriesService) *SensorSeriesHandler {
 	return &SensorSeriesHandler{service: value}
 }

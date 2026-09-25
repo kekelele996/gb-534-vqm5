@@ -1,5 +1,7 @@
 package constants
+
 type Role string
+
 const (
 	RoleAdmin            Role = "admin"
 	RoleProcessScientist Role = "process_scientist"
@@ -19,6 +21,7 @@ const (
 	PermissionAnalysisConfirm = "analysis:confirm"
 	PermissionAuditRead       = "audit:read"
 )
+
 var rolePermissions = map[Role]map[string]struct{}{
 	RoleAdmin: {
 		PermissionRead: {}, PermissionVesselWrite: {}, PermissionRecipeWrite: {},
@@ -40,6 +43,7 @@ var rolePermissions = map[Role]map[string]struct{}{
 	},
 	RoleAuditor: {PermissionRead: {}, PermissionAuditRead: {}},
 }
+
 func (r Role) Valid() bool {
 	_, ok := rolePermissions[r]
 	return ok

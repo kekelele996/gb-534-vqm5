@@ -1,4 +1,5 @@
 package timeseries
+
 import (
 	"encoding/json"
 	"fmt"
@@ -7,6 +8,7 @@ import (
 	"strings"
 	"time"
 )
+
 type Point struct {
 	Timestamp time.Time           `json:"timestamp"`
 	Values    map[string]*float64 `json:"values"`
@@ -27,6 +29,7 @@ type wirePoint struct {
 	Values    map[string]*float64 `json:"values"`
 	Value     *float64            `json:"value"`
 }
+
 func Validate(raw []byte, primaryChannel string, sampleIntervalSeconds int) ([]Point, QualitySummary, error) {
 	var input []wirePoint
 	if err := json.Unmarshal(raw, &input); err != nil {

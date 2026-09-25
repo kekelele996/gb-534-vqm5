@@ -1,13 +1,15 @@
 package repository
+
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
+	"fmt"
 	"gorm.io/gorm"
+	"strings"
+	"time"
 )
+
 type SensorSeriesRepository interface {
 	Create(context.Context, *model.SensorSeries) error
 	GetByID(context.Context, uint, bool) (model.SensorSeries, error)
@@ -16,6 +18,7 @@ type SensorSeriesRepository interface {
 	FindByRunCode(context.Context, string) (model.SensorSeries, error)
 }
 type sensorSeriesRepository struct{ db *gorm.DB }
+
 func NewSensorSeriesRepository(db *gorm.DB) SensorSeriesRepository {
 	return &sensorSeriesRepository{db: db}
 }

@@ -13,6 +13,10 @@ function readableJSON(raw?: string) {
 }
 const beforeSnapshot = computed(() => readableJSON(props.event?.before_snapshot))
 const afterSnapshot = computed(() => readableJSON(props.event?.after_snapshot))
+const actionLabels: Record<string, string> = {
+  run: '分析运行', transition: '状态迁移', replay: '重放校验', phase_review: '阶段复核结论',
+}
+const actionLabel = computed(() => (props.event ? actionLabels[props.event.action] ?? props.event.action : ''))
 </script>
 
 <template>
@@ -23,7 +27,7 @@ const afterSnapshot = computed(() => readableJSON(props.event?.after_snapshot))
     </div>
     <template v-if="event">
       <dl class="audit-meta-grid">
-        <div><dt>动作</dt><dd>{{ event.action }}</dd></div>
+        <div><dt>动作</dt><dd>{{ actionLabel }}</dd></div>
         <div><dt>操作者</dt><dd>{{ event.actor_name }} · {{ event.actor_role }}</dd></div>
         <div><dt>Request ID</dt><dd>{{ event.request_id }}</dd></div>
         <div><dt>时间</dt><dd>{{ new Date(event.created_at).toLocaleString() }}</dd></div>

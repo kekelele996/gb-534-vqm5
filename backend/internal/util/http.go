@@ -1,4 +1,5 @@
 package util
+
 import (
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,26 +11,31 @@ import (
 	"strconv"
 	"strings"
 )
+
 type ErrorCode string
+
 const (
-	CodeBadRequest       ErrorCode = "BAD_REQUEST"
-	CodeUnauthorized     ErrorCode = "UNAUTHORIZED"
-	CodeForbidden        ErrorCode = "FORBIDDEN"
-	CodeNotFound         ErrorCode = "NOT_FOUND"
-	CodeConflict         ErrorCode = "CONFLICT"
-	CodeValidation       ErrorCode = "VALIDATION_FAILED"
-	CodeRateLimited      ErrorCode = "RATE_LIMITED"
-	CodeInternal         ErrorCode = "INTERNAL_ERROR"
-	CodeIdempotency      ErrorCode = "IDEMPOTENCY_KEY_REQUIRED"
-	CodeStateTransition  ErrorCode = "INVALID_STATE_TRANSITION"
-	CodeReviewerConflict ErrorCode = "REVIEWER_AUTHOR_CONFLICT"
+	CodeBadRequest          ErrorCode = "BAD_REQUEST"
+	CodeUnauthorized        ErrorCode = "UNAUTHORIZED"
+	CodeForbidden           ErrorCode = "FORBIDDEN"
+	CodeNotFound            ErrorCode = "NOT_FOUND"
+	CodeConflict            ErrorCode = "CONFLICT"
+	CodeValidation          ErrorCode = "VALIDATION_FAILED"
+	CodeRateLimited         ErrorCode = "RATE_LIMITED"
+	CodeInternal            ErrorCode = "INTERNAL_ERROR"
+	CodeIdempotency         ErrorCode = "IDEMPOTENCY_KEY_REQUIRED"
+	CodeStateTransition     ErrorCode = "INVALID_STATE_TRANSITION"
+	CodeReviewerConflict    ErrorCode = "REVIEWER_AUTHOR_CONFLICT"
+	CodePhaseReviewRequired ErrorCode = "PHASE_REVIEW_REQUIRED"
 )
+
 type AppError struct {
 	Status  int
 	Code    ErrorCode
 	Message string
 	Cause   error
 }
+
 func (e *AppError) Error() string {
 	if e.Cause == nil {
 		return e.Message
@@ -49,12 +55,14 @@ func Conflict(message string) *AppError {
 func NotFound(entity string) *AppError {
 	return NewError(http.StatusNotFound, CodeNotFound, entity+" was not found")
 }
+
 type Envelope struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	Data      any    `json:"data,omitempty"`
 	RequestID string `json:"request_id"`
 }
+
 func Success(c *gin.Context, status int, data any) {
 	c.JSON(status, Envelope{Code: "OK", Message: "success", Data: data, RequestID: RequestID(c)})
 }
@@ -76,6 +84,7 @@ func RequestID(c *gin.Context) string {
 	}
 	return ""
 }
+
 type Actor struct {
 	UserID      uint   `json:"user_id"`
 	Username    string `json:"username"`
@@ -83,6 +92,7 @@ type Actor struct {
 	Role        string `json:"role"`
 	RequestID   string `json:"request_id"`
 }
+
 func ParseUintParam(c *gin.Context, name string) (uint, error) {
 	raw := c.Param(name)
 	value, err := strconv.ParseUint(raw, 10, 64)

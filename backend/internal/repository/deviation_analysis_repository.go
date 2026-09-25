@@ -1,13 +1,15 @@
 package repository
+
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
+	"fmt"
 	"gorm.io/gorm"
+	"strings"
+	"time"
 )
+
 type DeviationAnalysisRepository interface {
 	Create(context.Context, *model.DeviationAnalysis) error
 	GetByID(context.Context, uint, bool) (model.DeviationAnalysis, error)
@@ -19,6 +21,7 @@ type DeviationAnalysisRepository interface {
 	SetReplayVerified(context.Context, uint, bool) error
 }
 type deviationAnalysisRepository struct{ db *gorm.DB }
+
 func NewDeviationAnalysisRepository(db *gorm.DB) DeviationAnalysisRepository {
 	return &deviationAnalysisRepository{db: db}
 }
@@ -32,7 +35,10 @@ func (r *deviationAnalysisRepository) GetByID(ctx context.Context, id uint, prel
 	var analysis model.DeviationAnalysis
 	query := r.db.WithContext(ctx)
 	if preload {
-		query = query.Preload("SensorSeries").Preload("SensorSeries.Vessel").Preload("SensorSeries.Recipe")
+		query = query.Preload("SensorSeries").Preload("SensorSeries.Vessel").Preload("SensorSeries.Recipe").
+			Preload("PhaseReviews", func(db *gorm.DB) *gorm.DB {
+				return db.Order("submitted_at DESC, id DESC")
+			})
 	}
 	if err := query.First(&analysis, id).Error; err != nil {
 		return model.DeviationAnalysis{}, fmt.Errorf("find deviation analysis %d: %w", id, err)
@@ -78,6 +84,9 @@ func (r *deviationAnalysisRepository) List(ctx context.Context, query dto.Deviat
 	var analyses []model.DeviationAnalysis
 	offset := (query.Page - 1) * query.PageSize
 	if err := base.Preload("SensorSeries").Preload("SensorSeries.Vessel").Preload("SensorSeries.Recipe").
+		Preload("PhaseReviews", func(db *gorm.DB) *gorm.DB {
+			return db.Order("submitted_at DESC, id DESC")
+		}).
 		Order("analyzed_at DESC, id DESC").Limit(query.PageSize).Offset(offset).Find(&analyses).Error; err != nil {
 		return nil, 0, fmt.Errorf("list deviation analyses: %w", err)
 	}
@@ -115,10 +124,12 @@ func (r *deviationAnalysisRepository) SetReplayVerified(ctx context.Context, id 
 	}
 	return nil
 }
+
 type UserRepository interface {
 	FindByUsername(context.Context, string) (model.User, error)
 }
 type userRepository struct{ db *gorm.DB }
+
 func NewUserRepository(db *gorm.DB) UserRepository { return &userRepository{db: db} }
 func (r *userRepository) FindByUsername(ctx context.Context, username string) (model.User, error) {
 	var user model.User
@@ -127,8 +138,10 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (m
 	}
 	return user, nil
 }
+
 type AuditQuery struct {
 	EntityType, RequestID, Action string
+	EntityID                      uint
 	ActorID                       uint
 	From, To                      *time.Time
 	Page, PageSize                int
@@ -138,6 +151,7 @@ type AuditRepository interface {
 	List(context.Context, AuditQuery) ([]model.AuditLog, int64, error)
 }
 type auditRepository struct{ db *gorm.DB }
+
 func NewAuditRepository(db *gorm.DB) AuditRepository { return &auditRepository{db: db} }
 func (r *auditRepository) Record(ctx context.Context, audit model.AuditLog) error {
 	if err := r.db.WithContext(ctx).Create(&audit).Error; err != nil {
@@ -149,6 +163,9 @@ func (r *auditRepository) List(ctx context.Context, query AuditQuery) ([]model.A
 	base := r.db.WithContext(ctx).Model(&model.AuditLog{})
 	if query.EntityType != "" {
 		base = base.Where("entity_type = ?", query.EntityType)
+	}
+	if query.EntityID != 0 {
+		base = base.Where("entity_id = ?", query.EntityID)
 	}
 	if query.RequestID != "" {
 		base = base.Where("request_id = ?", query.RequestID)

@@ -8,7 +8,7 @@ export const useAuditStore = defineStore('audit', () => {
   const items = ref<AuditLog[]>([])
   const loading = ref(false)
   const error = ref('')
-  async function load(filters: { entity_type?: string; request_id?: string } = {}) {
+  async function load(filters: { entity_type?: string; entity_id?: number; request_id?: string; action?: string } = {}) {
     loading.value = true; error.value = ''
     try { items.value = (await listAuditLogs({ ...filters, page_size: 100 })).items }
     catch (cause) { error.value = errorMessage(cause) }

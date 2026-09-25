@@ -1,10 +1,12 @@
 package dto
+
 import (
 	"encoding/json"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"strings"
 	"time"
 )
+
 type ImportSensorSeriesRequest struct {
 	VesselID        uint            `json:"vessel_id" binding:"required"`
 	RecipeID        uint            `json:"recipe_id" binding:"required"`
@@ -13,10 +15,12 @@ type ImportSensorSeriesRequest struct {
 	SampleIntervalS int             `json:"sample_interval_s" binding:"required,gte=1,lte=86400"`
 	PointsJSON      json.RawMessage `json:"points_json" binding:"required"`
 }
+
 func (r *ImportSensorSeriesRequest) Normalize() {
 	r.RunCode = strings.ToUpper(strings.TrimSpace(r.RunCode))
 	r.Channel = strings.ToLower(strings.TrimSpace(r.Channel))
 }
+
 type SensorSeriesTransitionRequest struct {
 	ToState string `json:"to_state" binding:"required,oneof=validated normalized ready rejected superseded"`
 	Comment string `json:"comment" binding:"omitempty,max=500"`
@@ -53,6 +57,7 @@ type SensorSeriesListResponse struct {
 	Page  int                    `json:"page"`
 	Size  int                    `json:"page_size"`
 }
+
 func NewSensorSeriesResponse(series model.SensorSeries) SensorSeriesResponse {
 	response := SensorSeriesResponse{
 		ID: series.ID, VesselID: series.VesselID, RecipeID: series.RecipeID,

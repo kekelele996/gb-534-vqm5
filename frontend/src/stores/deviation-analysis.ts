@@ -1,8 +1,9 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { listAnalyses, replayAnalysis, runAnalysis, transitionAnalysis } from '../api/deviation-analysis'
+import { listAnalyses, replayAnalysis, runAnalysis, submitPhaseReview, transitionAnalysis } from '../api/deviation-analysis'
 import { errorMessage } from '../api/client'
 import type { AnalysisState, DeviationAnalysis } from '../types/deviation-analysis'
+import type { PhaseDecision } from '../types/enums/phase-decision'
 
 export const useAnalysisStore = defineStore('deviation-analyses', () => {
   const items = ref<DeviationAnalysis[]>([])
@@ -29,10 +30,15 @@ export const useAnalysisStore = defineStore('deviation-analyses', () => {
     selected.value = await transitionAnalysis(selected.value.id, state, comment)
     await load()
   }
+  async function reviewPhase(phase: string, decision: PhaseDecision, comment: string) {
+    if (!selected.value) return
+    selected.value = await submitPhaseReview(selected.value.id, phase, decision, comment)
+    await load()
+  }
   async function replay() {
     if (!selected.value) return
     selected.value = await replayAnalysis(selected.value.id)
     await load()
   }
-  return { items, selected, loading, running, error, load, run, transition, replay }
+  return { items, selected, loading, running, error, load, run, transition, reviewPhase, replay }
 })

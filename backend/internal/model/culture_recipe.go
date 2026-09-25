@@ -1,5 +1,7 @@
 package model
+
 import "time"
+
 type CultureRecipe struct {
 	ID                   uint               `gorm:"primaryKey" json:"id"`
 	VesselID             uint               `gorm:"not null;index;uniqueIndex:idx_recipe_code_version" json:"vessel_id"`
@@ -18,6 +20,7 @@ type CultureRecipe struct {
 	UpdatedAt            time.Time          `gorm:"not null" json:"updated_at"`
 	SensorSeries         []SensorSeries     `gorm:"foreignKey:RecipeID" json:"-"`
 }
+
 func (CultureRecipe) TableName() string { return "culture_recipes" }
 func (r CultureRecipe) Editable() bool {
 	return r.RecipeState == "draft" || r.RecipeState == "validated"

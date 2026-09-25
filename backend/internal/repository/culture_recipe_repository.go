@@ -1,13 +1,15 @@
 package repository
+
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
+	"fmt"
 	"gorm.io/gorm"
+	"strings"
+	"time"
 )
+
 type CultureRecipeRepository interface {
 	Create(context.Context, *model.CultureRecipe) error
 	GetByID(context.Context, uint, bool) (model.CultureRecipe, error)
@@ -17,6 +19,7 @@ type CultureRecipeRepository interface {
 	MaxVersion(context.Context, uint, string) (int, error)
 }
 type cultureRecipeRepository struct{ db *gorm.DB }
+
 func NewCultureRecipeRepository(db *gorm.DB) CultureRecipeRepository {
 	return &cultureRecipeRepository{db: db}
 }

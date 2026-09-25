@@ -1,10 +1,12 @@
 package router
+
 import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
 	"fermentation-kinetics-deviation-analysis/backend/internal/handler"
 	"fermentation-kinetics-deviation-analysis/backend/internal/middleware"
 	"github.com/gin-gonic/gin"
 )
+
 func RegisterCultureRecipeRoutes(api *gin.RouterGroup, h *handler.CultureRecipeHandler) {
 	group := api.Group("/culture-recipes")
 	group.GET("", middleware.RequirePermission(constants.PermissionRead), h.List)

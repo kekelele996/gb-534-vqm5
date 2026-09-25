@@ -1,10 +1,12 @@
 package config
+
 import (
 	"fmt"
 	"os"
 	"strconv"
 	"time"
 )
+
 type Config struct {
 	Port                   string
 	DBDriver               string
@@ -17,6 +19,7 @@ type Config struct {
 	AnalysisLimitPerMinute int
 	ShutdownTimeout        time.Duration
 }
+
 func Load() (Config, error) {
 	cfg := Config{
 		Port: env("PORT", "8080"), DBDriver: env("DB_DRIVER", "postgres"),

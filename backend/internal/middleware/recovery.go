@@ -1,4 +1,5 @@
 package middleware
+
 import (
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
 	"github.com/gin-gonic/gin"
@@ -6,6 +7,7 @@ import (
 	"net/http"
 	"runtime/debug"
 )
+
 func Recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {

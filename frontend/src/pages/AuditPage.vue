@@ -12,11 +12,16 @@ import type { AuditLog } from '../types/audit'
 
 const audit = useAuditStore()
 const analyses = useAnalysisStore()
-const filters = reactive({ entity_type: '', request_id: '' })
+const filters = reactive<{ entity_type: string; request_id: string; action: string }>({ entity_type: '', request_id: '', action: '' })
 const selectedAudit = ref<AuditLog | null>(null)
 const evidenceDrawer = ref(false)
 const explanationDrawer = ref(false)
+const actionLabels: Record<string, string> = {
+  run: '分析运行', transition: '状态迁移', replay: '重放校验', phase_review: '阶段复核结论',
+  http_write: '页面写入',
+}
 const algorithmEvents = computed(() => audit.items.filter((item) => item.algorithm_version).length)
+const phaseReviewEvents = computed(() => audit.items.filter((item) => item.action === 'phase_review').length)
 const selectedAnalysis = computed(() => selectedAudit.value?.entity_type === 'deviation_analysis'
   ? analyses.items.find((item) => item.id === selectedAudit.value?.entity_id) ?? null
   : null)
@@ -42,6 +47,7 @@ onMounted(() => Promise.all([audit.load(), analyses.load()]))
       <section class="metric-band audit">
         <div><span>当前事件</span><strong>{{ audit.items.length }}</strong></div>
         <div><span>算法事件</span><strong>{{ algorithmEvents }}</strong></div>
+        <div><span>阶段复核结论</span><strong>{{ phaseReviewEvents }}</strong></div>
         <div><span>独立 request ID</span><strong>{{ new Set(audit.items.map((item) => item.request_id)).size }}</strong></div>
         <div><span>实体类型</span><strong>{{ new Set(audit.items.map((item) => item.entity_type)).size }}</strong></div>
       </section>
@@ -49,6 +55,12 @@ onMounted(() => Promise.all([audit.load(), analyses.load()]))
         <el-select v-model="filters.entity_type" clearable placeholder="全部实体">
           <el-option label="发酵罐" value="fermentation_vessel" /><el-option label="培养配方" value="culture_recipe" />
           <el-option label="传感器时序" value="sensor_series" /><el-option label="偏差分析" value="deviation_analysis" />
+        </el-select>
+        <el-select v-model="filters.action" clearable placeholder="全部动作">
+          <el-option label="分析运行" value="run" />
+          <el-option label="阶段复核结论" value="phase_review" />
+          <el-option label="状态迁移" value="transition" />
+          <el-option label="重放校验" value="replay" />
         </el-select>
         <el-input v-model="filters.request_id" clearable placeholder="request ID"><template #prefix><Search :size="15" /></template></el-input>
         <el-button @click="audit.load(filters)">筛选</el-button>
@@ -58,7 +70,7 @@ onMounted(() => Promise.all([audit.load(), analyses.load()]))
       <div v-else-if="!audit.items.length" class="empty-state"><h2>暂无审计事件</h2><p>写操作发生后会记录请求与快照。</p></div>
       <el-table v-else :data="audit.items" row-key="id">
         <el-table-column label="时间" width="175"><template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template></el-table-column>
-        <el-table-column label="实体" min-width="170"><template #default="{ row }"><div class="primary-cell"><strong>{{ row.entity_type }} #{{ row.entity_id }}</strong><span>{{ row.action }}</span></div></template></el-table-column>
+        <el-table-column label="实体" min-width="170"><template #default="{ row }"><div class="primary-cell"><strong>{{ row.entity_type }} #{{ row.entity_id }}</strong><span>{{ actionLabels[row.action] ?? row.action }}</span></div></template></el-table-column>
         <el-table-column label="操作者" width="150"><template #default="{ row }"><div class="primary-cell"><strong>{{ row.actor_name }}</strong><span>{{ row.actor_role }}</span></div></template></el-table-column>
         <el-table-column label="Request ID" min-width="240"><template #default="{ row }"><code class="request-code">{{ row.request_id }}</code></template></el-table-column>
         <el-table-column label="算法" width="160"><template #default="{ row }"><span>{{ row.algorithm_version || '—' }}</span><small v-if="row.duration_ms" class="cell-note">{{ row.duration_ms }} ms</small></template></el-table-column>

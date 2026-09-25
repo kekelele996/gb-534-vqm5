@@ -1,37 +1,62 @@
 package service
+
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"net/http"
-	"strings"
-	"time"
 	"fermentation-kinetics-deviation-analysis/backend/internal/algorithm"
 	"fermentation-kinetics-deviation-analysis/backend/internal/constants"
 	"fermentation-kinetics-deviation-analysis/backend/internal/dto"
 	"fermentation-kinetics-deviation-analysis/backend/internal/model"
 	"fermentation-kinetics-deviation-analysis/backend/internal/repository"
 	"fermentation-kinetics-deviation-analysis/backend/internal/util"
+	"fmt"
 	"gorm.io/gorm"
+	"net/http"
+	"strings"
+	"time"
 )
+
 type DeviationAnalysisService struct {
-	analyses  repository.DeviationAnalysisRepository
-	recipes   repository.CultureRecipeRepository
-	series    repository.SensorSeriesRepository
-	audits    repository.AuditRepository
-	evaluator *algorithm.Evaluator
-	now       func() time.Time
+	analyses     repository.DeviationAnalysisRepository
+	phaseReviews repository.PhaseReviewRepository
+	recipes      repository.CultureRecipeRepository
+	series       repository.SensorSeriesRepository
+	audits       repository.AuditRepository
+	evaluator    *algorithm.Evaluator
+	now          func() time.Time
 }
+
 func NewDeviationAnalysisService(
 	analyses repository.DeviationAnalysisRepository,
+	phaseReviews repository.PhaseReviewRepository,
 	recipes repository.CultureRecipeRepository,
 	series repository.SensorSeriesRepository,
 	audits repository.AuditRepository,
 	evaluator *algorithm.Evaluator,
 ) *DeviationAnalysisService {
 	return &DeviationAnalysisService{
-		analyses: analyses, recipes: recipes, series: series, audits: audits, evaluator: evaluator,
+		analyses: analyses, phaseReviews: phaseReviews, recipes: recipes, series: series,
+		audits: audits, evaluator: evaluator,
 		now: func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// abnormalPhases returns phases whose weighted deviation is at least the watch
+// threshold; those phases require an explicit reviewer judgment before the
+// whole analysis can be confirmed.
+func abnormalPhases(analysis model.DeviationAnalysis) ([]algorithm.PhaseEvidence, error) {
+	var scores []algorithm.PhaseEvidence
+	if err := json.Unmarshal([]byte(analysis.PhaseScoresJSON), &scores); err != nil {
+		return nil, fmt.Errorf("decode phase scores for analysis %d: %w", analysis.ID, err)
+	}
+	abnormal := make([]algorithm.PhaseEvidence, 0, len(scores))
+	for _, score := range scores {
+		if constants.DeviationLevelForScore(score.WeightedDeviation) != constants.DeviationNormal {
+			abnormal = append(abnormal, score)
+		}
+	}
+	return abnormal, nil
 }
 func (s *DeviationAnalysisService) Run(
 	ctx context.Context, request dto.RunDeviationAnalysisRequest, idempotencyKey string, actor util.Actor,
@@ -174,6 +199,16 @@ func (s *DeviationAnalysisService) Transition(
 		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeReviewerConflict,
 			"analysis initiator cannot confirm their own result")
 	}
+	if to == constants.AnalysisConfirmed {
+		missing, err := s.pendingAbnormalPhases(ctx, analysis)
+		if err != nil {
+			return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusUnprocessableEntity, util.CodeValidation, "unable to evaluate phase review coverage", err)
+		}
+		if len(missing) > 0 {
+			return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodePhaseReviewRequired,
+				"confirmation blocked: abnormal phase(s) without a review conclusion: "+strings.Join(missing, ", "))
+		}
+	}
 	before := analysis
 	updates := map[string]any{"review_comment": strings.TrimSpace(request.Comment)}
 	if to == constants.AnalysisReviewed {
@@ -199,6 +234,116 @@ func (s *DeviationAnalysisService) Transition(
 	}
 	return s.Get(ctx, id)
 }
+func (s *DeviationAnalysisService) pendingAbnormalPhases(ctx context.Context, analysis model.DeviationAnalysis) ([]string, error) {
+	abnormal, err := abnormalPhases(analysis)
+	if err != nil {
+		return nil, err
+	}
+	reviews, err := s.phaseReviews.ListByAnalysis(ctx, analysis.ID)
+	if err != nil {
+		return nil, err
+	}
+	concluded := make(map[string]struct{}, len(reviews))
+	for _, review := range reviews {
+		concluded[review.Phase] = struct{}{}
+	}
+	missing := make([]string, 0, len(abnormal))
+	for _, score := range abnormal {
+		if _, ok := concluded[score.Phase]; !ok {
+			missing = append(missing, score.Phase)
+		}
+	}
+	return missing, nil
+}
+
+// SubmitPhaseReview stores the reviewer's per-phase judgment. Judgments can
+// only be recorded while the analysis is still open for review; once the
+// result is confirmed or voided the conclusions are frozen.
+func (s *DeviationAnalysisService) SubmitPhaseReview(
+	ctx context.Context, id uint, request dto.PhaseReviewRequest, actor util.Actor,
+) (dto.DeviationAnalysisResponse, error) {
+	analysis, err := s.analyses.GetByID(ctx, id, false)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return dto.DeviationAnalysisResponse{}, util.NotFound("deviation analysis")
+		}
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load deviation analysis", err)
+	}
+	switch constants.AnalysisState(analysis.AnalysisState) {
+	case constants.AnalysisCompleted, constants.AnalysisReviewed, constants.AnalysisInvestigating:
+	default:
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeStateTransition,
+			"phase conclusions can only be recorded before the analysis is confirmed or voided")
+	}
+	if !analysis.ReviewerSeparated(actor.UserID) {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusConflict, util.CodeReviewerConflict,
+			"analysis initiator cannot record review conclusions for their own result")
+	}
+	abnormal, err := abnormalPhases(analysis)
+	if err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusUnprocessableEntity, util.CodeValidation, "unable to decode phase scores", err)
+	}
+	if !phasePresent(abnormal, request.Phase) {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusUnprocessableEntity, util.CodeValidation,
+			"phase "+request.Phase+" is not an abnormal phase of this analysis and does not require a conclusion")
+	}
+	existingReviews, err := s.phaseReviews.ListByAnalysis(ctx, id)
+	if err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to load phase conclusions", err)
+	}
+	var before *model.PhaseReview
+	for i := range existingReviews {
+		if existingReviews[i].Phase == request.Phase {
+			before = &existingReviews[i]
+			break
+		}
+	}
+	now := s.now()
+	comment := strings.TrimSpace(request.Comment)
+	if comment == "" {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusBadRequest, util.CodeBadRequest,
+			"phase review comment is required")
+	}
+	if len([]rune(comment)) > 500 {
+		return dto.DeviationAnalysisResponse{}, util.NewError(http.StatusBadRequest, util.CodeBadRequest,
+			"phase review comment must not exceed 500 characters")
+	}
+	review := model.PhaseReview{
+		AnalysisID: id, Phase: request.Phase, Decision: request.Decision, Comment: comment,
+		ReviewedBy: actor.UserID, ReviewedByName: actor.Username, SubmittedAt: now,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if before != nil {
+		review.ID = before.ID
+		review.CreatedAt = before.CreatedAt
+	}
+	if err := s.phaseReviews.Upsert(ctx, review); err != nil {
+		return dto.DeviationAnalysisResponse{}, util.WrapError(http.StatusInternalServerError, util.CodeInternal, "unable to store phase conclusion", err)
+	}
+	if err := recordAudit(ctx, s.audits, actor, "deviation_analysis", id, "phase_review",
+		phaseReviewAuditSnapshot(before), phaseReviewAuditSnapshot(&review),
+		analysis.InputHash, analysis.AlgorithmVersion, 0); err != nil {
+		return dto.DeviationAnalysisResponse{}, err
+	}
+	return s.Get(ctx, id)
+}
+
+func phaseReviewAuditSnapshot(review *model.PhaseReview) any {
+	if review == nil {
+		return nil
+	}
+	return review
+}
+
+func phasePresent(scores []algorithm.PhaseEvidence, phase string) bool {
+	for _, score := range scores {
+		if score.Phase == phase {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *DeviationAnalysisService) Replay(
 	ctx context.Context, id uint, actor util.Actor,
 ) (dto.DeviationAnalysisResponse, error) {
